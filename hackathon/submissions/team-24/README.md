@@ -1,16 +1,17 @@
 # Team <name>
 
 ## Participants
-- Name (role(s) played today)
-- Name (role(s) played today)
-- Name (role(s) played today)
+- Rakesha PM
+- Avinash and Chinmaya Arch
+- Srinath and Shubham Devs
+- Gaurav and Kavya Tester
+- Srinath Infra
 
 ## Scenario
-Scenario <#>: <title>
+Scenario 5: Domain IT helpdesk
 
 ## What We Built
-2-3 paragraphs. What exists in this repo that didn't exist 3 hours ago.
-What runs, what's scaffolding, what's faked.
+
 
 ## Challenges Attempted
 | # | Challenge | Status | Notes |
