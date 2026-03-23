@@ -3,8 +3,11 @@ Stub tool implementations. Return hardcoded dicts that mirror real integrations.
 In production these would call HRIS, CMDB, IdP, KB APIs.
 """
 
+from __future__ import annotations
+
 
 def lookup_kb(query_text: str) -> dict:
+    """Search the knowledge base for known issues and resolutions."""
     return {
         "found": True,
         "article_id": "KB-1042",
@@ -15,6 +18,7 @@ def lookup_kb(query_text: str) -> dict:
 
 
 def lookup_employee(email: str) -> dict:
+    """Look up an employee record by email address."""
     if "external" in email or "unknown" in email:
         return {"found": False, "email": email}
     return {
@@ -30,6 +34,7 @@ def lookup_employee(email: str) -> dict:
 
 
 def lookup_asset(asset_id: str) -> dict:
+    """Look up a hardware or software asset by asset ID."""
     return {
         "asset_id": asset_id,
         "type": "laptop",
@@ -43,6 +48,7 @@ def lookup_asset(asset_id: str) -> dict:
 
 
 def get_open_tickets(email: str) -> dict:
+    """Return all open tickets for a given requester email."""
     return {
         "open_count": 1,
         "tickets": [
@@ -52,6 +58,7 @@ def get_open_tickets(email: str) -> dict:
 
 
 def check_system_status() -> dict:
+    """Return overall system and service health status."""
     return {
         "overall": "degraded",
         "services": {
@@ -65,7 +72,14 @@ def check_system_status() -> dict:
     }
 
 
-def write_ticket_decision(ticket_id: str, priority: str, queue: str, action: str, notes: str) -> dict:
+def write_ticket_decision(
+    ticket_id: str,
+    priority: str,
+    queue: str,
+    action: str,
+    notes: str,
+) -> dict:
+    """Persist the triage decision for a ticket."""
     return {
         "status": "written",
         "ticket_id": ticket_id,
@@ -77,6 +91,7 @@ def write_ticket_decision(ticket_id: str, priority: str, queue: str, action: str
 
 
 def trigger_password_reset(employee_id: str, email: str) -> dict:
+    """Trigger a self-service password-reset email for an employee."""
     return {
         "status": "reset_sent",
         "employee_id": employee_id,
@@ -86,13 +101,16 @@ def trigger_password_reset(employee_id: str, email: str) -> dict:
 
 
 def flag_for_human(ticket_id: str, reason: str, context: str) -> dict:
+    """Flag a ticket for human review and add context notes."""
     return {"status": "flagged", "ticket_id": ticket_id, "reason": reason}
 
 
 def handoff_to_security(ticket_id: str, indicator: str, context: str) -> dict:
+    """Hand a ticket off to the Security Operations team."""
     return {"status": "handed_off", "ticket_id": ticket_id, "indicator": indicator, "team": "SecurityOps"}
 
 
+# Callable registry — used by eval_harness mock agent and any non-MCP callers.
 TOOL_REGISTRY = {
     "lookup_kb": lookup_kb,
     "lookup_employee": lookup_employee,
@@ -105,7 +123,12 @@ TOOL_REGISTRY = {
     "handoff_to_security": handoff_to_security,
 }
 
-TOOL_SCHEMAS = [
+# ---------------------------------------------------------------------------
+# MCP-compatible tool schemas (Anthropic format — uses `input_schema`, not
+# `parameters`).  Consumed by tools/mcp_server.py and agent.py.
+# ---------------------------------------------------------------------------
+
+TOOL_SCHEMAS: list[dict] = [
     {
         "name": "lookup_kb",
         "description": "Search the knowledge base for known issues and resolutions.",
@@ -120,7 +143,7 @@ TOOL_SCHEMAS = [
         "description": "Look up employee details by email address.",
         "input_schema": {
             "type": "object",
-            "properties": {"email": {"type": "string"}},
+            "properties": {"email": {"type": "string", "description": "Employee email address"}},
             "required": ["email"],
         },
     },
@@ -129,7 +152,7 @@ TOOL_SCHEMAS = [
         "description": "Look up a device or asset by asset ID.",
         "input_schema": {
             "type": "object",
-            "properties": {"asset_id": {"type": "string"}},
+            "properties": {"asset_id": {"type": "string", "description": "Asset identifier"}},
             "required": ["asset_id"],
         },
     },
@@ -138,14 +161,14 @@ TOOL_SCHEMAS = [
         "description": "Get open support tickets for a given email address.",
         "input_schema": {
             "type": "object",
-            "properties": {"email": {"type": "string"}},
+            "properties": {"email": {"type": "string", "description": "Requester email address"}},
             "required": ["email"],
         },
     },
     {
         "name": "check_system_status",
         "description": "Check current status of all company systems and active incidents.",
-        "input_schema": {"type": "object", "properties": {}},
+        "input_schema": {"type": "object", "properties": {}, "required": []},
     },
     {
         "name": "write_ticket_decision",
@@ -155,8 +178,21 @@ TOOL_SCHEMAS = [
             "properties": {
                 "ticket_id": {"type": "string"},
                 "priority": {"type": "string", "enum": ["P1", "P2", "P3", "P4"]},
-                "queue": {"type": "string"},
-                "action": {"type": "string", "enum": ["auto_resolve", "escalate", "route", "hard_stop"]},
+                "queue": {
+                    "type": "string",
+                    "enum": [
+                        "NetworkOps",
+                        "EndpointSupport",
+                        "AccountsAccess",
+                        "AppSupport",
+                        "SecurityOps",
+                        "ServiceDesk",
+                    ],
+                },
+                "action": {
+                    "type": "string",
+                    "enum": ["auto_resolve", "escalate", "route", "hard_stop"],
+                },
                 "notes": {"type": "string"},
             },
             "required": ["ticket_id", "priority", "queue", "action", "notes"],
@@ -194,7 +230,7 @@ TOOL_SCHEMAS = [
             "type": "object",
             "properties": {
                 "ticket_id": {"type": "string"},
-                "indicator": {"type": "string"},
+                "indicator": {"type": "string", "description": "Security indicator or IOC"},
                 "context": {"type": "string"},
             },
             "required": ["ticket_id", "indicator", "context"],
