@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ADR-001: TicketPilot Agent Architecture</title>
+  <style>
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --surface2: #22263a;
+      --accent: #7c6af7;
+      --accent2: #4fc3f7;
+      --green: #43e97b;
+      --red: #f7634f;
+      --yellow: #f7c948;
+      --text: #e8eaf0;
+      --muted: #8b90a7;
+      --border: #2e3250;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      height: 100vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Slide container ── */
+    #slides {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .slide {
+      position: absolute;
+      inset: 0;
+      padding: 48px 64px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      opacity: 0;
+      transform: translateX(60px);
+      transition: opacity .4s ease, transform .4s ease;
+      pointer-events: none;
+      overflow-y: auto;
+    }
+
+    .slide.active {
+      opacity: 1;
+      transform: translateX(0);
+      pointer-events: all;
+    }
+
+    .slide.exit {
+      opacity: 0;
+      transform: translateX(-60px);
+    }
+
+    /* ── Typography ── */
+    .tag {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      padding: 4px 12px;
+      border-radius: 20px;
+      margin-bottom: 20px;
+    }
+    .tag.adr    { background: #7c6af722; color: var(--accent); border: 1px solid var(--accent); }
+    .tag.arch   { background: #4fc3f722; color: var(--accent2); border: 1px solid var(--accent2); }
+    .tag.tools  { background: #43e97b22; color: var(--green); border: 1px solid var(--green); }
+    .tag.guard  { background: #f7634f22; color: var(--red); border: 1px solid var(--red); }
+    .tag.trade  { background: #f7c94822; color: var(--yellow); border: 1px solid var(--yellow); }
+
+    h1 { font-size: 3rem; font-weight: 800; line-height: 1.1; margin-bottom: 16px; }
+    h2 { font-size: 2rem; font-weight: 700; margin-bottom: 24px; }
+    h3 { font-size: 1.1rem; font-weight: 600; margin-bottom: 10px; color: var(--accent2); }
+    p  { color: var(--muted); line-height: 1.7; font-size: 1rem; }
+
+    .subtitle {
+      font-size: 1.15rem;
+      color: var(--muted);
+      margin-bottom: 32px;
+      max-width: 640px;
+    }
+
+    /* ── Stat cards ── */
+    .stats {
+      display: flex;
+      gap: 20px;
+      flex-wrap: wrap;
+      margin-top: 8px;
+    }
+    .stat {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px 28px;
+      flex: 1;
+      min-width: 140px;
+    }
+    .stat-value { font-size: 2.2rem; font-weight: 800; color: var(--accent); }
+    .stat-label { font-size: 0.78rem; color: var(--muted); margin-top: 4px; text-transform: uppercase; letter-spacing: .08em; }
+
+    /* ── Arch diagram ── */
+    .arch {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-top: 8px;
+    }
+    .arch-layer {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 20px;
+      position: relative;
+    }
+    .arch-layer.ingestion  { border-color: #4fc3f755; }
+    .arch-layer.triage     { border-color: #7c6af755; background: #7c6af710; }
+    .arch-layer.security   { border-color: #f7634f55; background: #f7634f08; }
+    .arch-layer.observe    { border-color: #43e97b55; }
+
+    .layer-title {
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+    .ingestion  .layer-title { color: var(--accent2); }
+    .triage     .layer-title { color: var(--accent); }
+    .security   .layer-title { color: var(--red); }
+    .observe    .layer-title { color: var(--green); }
+
+    .layer-chips {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .chip {
+      font-size: 0.78rem;
+      padding: 4px 12px;
+      border-radius: 20px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text);
+    }
+
+    .arrow {
+      text-align: center;
+      font-size: 1.2rem;
+      color: var(--muted);
+      line-height: 1;
+    }
+
+    /* ── Tool table ── */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 8px;
+      font-size: 0.87rem;
+    }
+    thead th {
+      text-align: left;
+      padding: 10px 14px;
+      background: var(--surface);
+      color: var(--muted);
+      font-weight: 600;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: .07em;
+      border-bottom: 1px solid var(--border);
+    }
+    tbody tr { border-bottom: 1px solid var(--border); }
+    tbody tr:hover { background: var(--surface2); }
+    tbody td { padding: 10px 14px; color: var(--text); }
+    .badge {
+      display: inline-block;
+      font-size: 0.72rem;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-weight: 600;
+    }
+    .badge.read  { background: #4fc3f722; color: var(--accent2); }
+    .badge.write { background: #f7c94822; color: var(--yellow); }
+    .badge.never { background: #43e97b22; color: var(--green); }
+    .badge.cond  { background: #f7634f22; color: var(--red); }
+
+    code {
+      font-family: 'Cascadia Code', 'Fira Code', monospace;
+      font-size: 0.85em;
+      background: var(--surface2);
+      padding: 2px 6px;
+      border-radius: 4px;
+      color: var(--accent2);
+    }
+
+    /* ── Guardrail cards ── */
+    .guard-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      margin-top: 8px;
+    }
+    .guard-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+    }
+    .guard-card h3 { color: var(--red); font-size: 0.85rem; }
+    .guard-card ul { margin-top: 10px; padding-left: 16px; }
+    .guard-card li { color: var(--muted); font-size: 0.82rem; margin-bottom: 8px; line-height: 1.5; }
+
+    /* ── Tradeoffs ── */
+    .tradeoffs {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      margin-top: 8px;
+    }
+    .pro-card, .con-card {
+      background: var(--surface);
+      border-radius: 12px;
+      padding: 24px;
+    }
+    .pro-card { border: 1px solid #43e97b55; }
+    .con-card { border: 1px solid #f7634f55; }
+    .pro-card h3 { color: var(--green); }
+    .con-card h3 { color: var(--red); }
+    .pro-card li, .con-card li {
+      color: var(--muted);
+      font-size: 0.88rem;
+      margin-bottom: 10px;
+      line-height: 1.6;
+      list-style: none;
+      padding-left: 20px;
+      position: relative;
+    }
+    .pro-card li::before { content: '✓'; position: absolute; left: 0; color: var(--green); }
+    .con-card li::before { content: '⚠'; position: absolute; left: 0; color: var(--yellow); }
+
+    /* ── Alternatives ── */
+    .alts {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+      margin-top: 8px;
+    }
+    .alt-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 18px;
+    }
+    .alt-card .alt-label {
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      color: var(--red);
+      margin-bottom: 6px;
+    }
+    .alt-card .alt-name { font-size: 0.95rem; font-weight: 600; margin-bottom: 6px; }
+    .alt-card .alt-reason { font-size: 0.82rem; color: var(--muted); line-height: 1.5; }
+
+    /* ── Open questions ── */
+    .questions {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      margin-top: 8px;
+    }
+    .question {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--accent);
+      border-radius: 8px;
+      padding: 16px 20px;
+      font-size: 0.92rem;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+    .question span { color: var(--text); font-weight: 600; }
+
+    /* ── Title slide accent line ── */
+    .accent-line {
+      width: 64px;
+      height: 4px;
+      background: linear-gradient(90deg, var(--accent), var(--accent2));
+      border-radius: 2px;
+      margin-bottom: 28px;
+    }
+
+    .meta-row {
+      display: flex;
+      gap: 24px;
+      margin-top: 28px;
+      flex-wrap: wrap;
+    }
+    .meta-item { font-size: 0.82rem; color: var(--muted); }
+    .meta-item strong { color: var(--text); }
+
+    /* ── Nav bar ── */
+    #nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 64px;
+      border-top: 1px solid var(--border);
+      background: var(--surface);
+      user-select: none;
+    }
+
+    #nav-info { font-size: 0.78rem; color: var(--muted); }
+
+    .nav-btn {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 8px 22px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.85rem;
+      transition: background .2s, border-color .2s;
+    }
+    .nav-btn:hover { background: var(--accent); border-color: var(--accent); }
+    .nav-btn:disabled { opacity: 0.3; cursor: default; }
+    .nav-btn:disabled:hover { background: var(--surface2); border-color: var(--border); }
+
+    /* progress dots */
+    #dots {
+      display: flex;
+      gap: 7px;
+      align-items: center;
+    }
+    .dot {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: var(--border);
+      cursor: pointer;
+      transition: background .2s, transform .2s;
+    }
+    .dot.active { background: var(--accent); transform: scale(1.3); }
+  </style>
+</head>
+<body>
+
+<div id="slides">
+
+  <!-- ── SLIDE 1: Title ── -->
+  <div class="slide active">
+    <div class="tag adr">ADR-001 · Accepted · 2026-03-23</div>
+    <h1>TicketPilot<br/>Agent Architecture</h1>
+    <div class="accent-line"></div>
+    <p class="subtitle">
+      A single primary triage agent with one specialist security subagent — built on the Claude Agent SDK — to automate IT helpdesk intake at scale.
+    </p>
+    <div class="stats">
+      <div class="stat"><div class="stat-value">350</div><div class="stat-label">Tickets / day</div></div>
+      <div class="stat"><div class="stat-value">4.2h</div><div class="stat-label">Mean first response</div></div>
+      <div class="stat"><div class="stat-value">61%</div><div class="stat-label">Automatable volume</div></div>
+      <div class="stat"><div class="stat-value">4</div><div class="stat-label">Ingest channels</div></div>
+    </div>
+    <div class="meta-row">
+      <div class="meta-item"><strong>Domain:</strong> IT Helpdesk Intake Automation</div>
+      <div class="meta-item"><strong>Deciders:</strong> Engineering Lead · IT Ops Lead · Security</div>
+      <div class="meta-item"><strong>Stack:</strong> Claude Agent SDK (Python) · Anthropic API</div>
+    </div>
+  </div>
+
+  <!-- ── SLIDE 2: Architecture ── -->
+  <div class="slide">
+    <div class="tag arch">Architecture</div>
+    <h2>System Layers</h2>
+    <div class="arch">
+      <div class="arch-layer ingestion">
+        <div class="layer-title">Ingestion Layer — normalize to TicketPayload</div>
+        <div class="layer-chips">
+          <span class="chip">Email Poller</span>
+          <span class="chip">Slack Events</span>
+          <span class="chip">Web Form Webhook</span>
+          <span class="chip">API Hook (monitoring)</span>
+        </div>
+      </div>
+      <div class="arrow">↓</div>
+      <div class="arch-layer triage">
+        <div class="layer-title">Triage Agent (Primary) — claude-sonnet-4-6</div>
+        <div class="layer-chips">
+          <span class="chip">lookup_kb</span>
+          <span class="chip">lookup_employee</span>
+          <span class="chip">lookup_asset</span>
+          <span class="chip">get_open_tickets</span>
+          <span class="chip">check_system_status</span>
+          <span class="chip">write_ticket_decision</span>
+          <span class="chip">trigger_password_reset</span>
+          <span class="chip">flag_for_human</span>
+          <span class="chip">handoff_to_security →</span>
+        </div>
+      </div>
+      <div class="arrow">↓ on security signal</div>
+      <div class="arch-layer security">
+        <div class="layer-title">Security Subagent (Specialist) — claude-sonnet-4-6</div>
+        <div class="layer-chips">
+          <span class="chip">lookup_threat_intel</span>
+          <span class="chip">check_watchlist</span>
+          <span class="chip">get_auth_log_summary</span>
+          <span class="chip">→ SecurityVerdict</span>
+        </div>
+      </div>
+      <div class="arrow">↓</div>
+      <div class="arch-layer observe">
+        <div class="layer-title">Observability Layer</div>
+        <div class="layer-chips">
+          <span class="chip">DecisionLog (Postgres)</span>
+          <span class="chip">TraceStore</span>
+          <span class="chip">ApprovalQueue (Redis, TTL 4h)</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── SLIDE 3: Tool Inventory ── -->
+  <div class="slide">
+    <div class="tag tools">Tool Inventory</div>
+    <h2>9 Tools · Read/Write Breakdown</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Tool</th>
+          <th>Access</th>
+          <th>External System</th>
+          <th>Approval Required</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td><code>lookup_kb</code></td><td><span class="badge read">Read</span></td><td>KB API</td><td><span class="badge never">Never</span></td></tr>
+        <tr><td><code>lookup_employee</code></td><td><span class="badge read">Read</span></td><td>HRIS API</td><td><span class="badge never">Never</span></td></tr>
+        <tr><td><code>lookup_asset</code></td><td><span class="badge read">Read</span></td><td>CMDB API</td><td><span class="badge never">Never</span></td></tr>
+        <tr><td><code>get_open_tickets</code></td><td><span class="badge read">Read</span></td><td>Ticketing API</td><td><span class="badge never">Never</span></td></tr>
+        <tr><td><code>check_system_status</code></td><td><span class="badge read">Read</span></td><td>Status API</td><td><span class="badge never">Never</span></td></tr>
+        <tr><td><code>write_ticket_decision</code></td><td><span class="badge write">Write</span></td><td>Ticketing API</td><td><span class="badge never">Always logged</span></td></tr>
+        <tr><td><code>trigger_password_reset</code></td><td><span class="badge write">Write</span></td><td>IdP API</td><td><span class="badge cond">confidence &lt; 0.90</span></td></tr>
+        <tr><td><code>flag_for_human</code></td><td><span class="badge write">Write</span></td><td>ApprovalQueue</td><td><span class="badge never">Never</span></td></tr>
+        <tr><td><code>handoff_to_security</code></td><td><span class="badge write">Write</span></td><td>SubAgent</td><td><span class="badge never">Never</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ── SLIDE 4: Memory & State ── -->
+  <div class="slide">
+    <div class="tag arch">Memory &amp; State</div>
+    <h2>State Model</h2>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:8px;">
+      <div>
+        <h3>Per-Session (prompt context)</h3>
+        <div style="display:flex;flex-direction:column;gap:10px;margin-top:8px;">
+          <div class="arch-layer" style="padding:14px 18px;">
+            <div style="font-size:0.85rem;color:var(--text);font-weight:600;margin-bottom:4px;">TicketPayload</div>
+            <div style="font-size:0.78rem;color:var(--muted);">channel · body · requester metadata</div>
+          </div>
+          <div class="arch-layer" style="padding:14px 18px;">
+            <div style="font-size:0.85rem;color:var(--text);font-weight:600;margin-bottom:4px;">Tool call results</div>
+            <div style="font-size:0.78rem;color:var(--muted);">enrichment from CMDB, HRIS, KB, status</div>
+          </div>
+          <div class="arch-layer" style="padding:14px 18px;">
+            <div style="font-size:0.85rem;color:var(--text);font-weight:600;margin-bottom:4px;">reasoning_trace</div>
+            <div style="font-size:0.78rem;color:var(--muted);">appended at each decision step</div>
+          </div>
+        </div>
+        <div style="margin-top:14px;padding:12px 16px;background:#f7634f11;border:1px solid #f7634f44;border-radius:8px;font-size:0.82rem;color:var(--muted);">
+          <strong style="color:var(--red);">No cross-session memory</strong> — security posture: ticket context cannot bleed across requests.
+        </div>
+      </div>
+      <div>
+        <h3>Durable State</h3>
+        <div style="display:flex;flex-direction:column;gap:10px;margin-top:8px;">
+          <div class="arch-layer observe" style="padding:14px 18px;">
+            <div style="font-size:0.85rem;color:var(--text);font-weight:600;margin-bottom:4px;">Ticketing System</div>
+            <div style="font-size:0.78rem;color:var(--muted);">canonical record of every ticket</div>
+          </div>
+          <div class="arch-layer observe" style="padding:14px 18px;">
+            <div style="font-size:0.85rem;color:var(--text);font-weight:600;margin-bottom:4px;">DecisionLog (Postgres)</div>
+            <div style="font-size:0.78rem;color:var(--muted);">structured decision + trace per ticket</div>
+          </div>
+          <div class="arch-layer observe" style="padding:14px 18px;">
+            <div style="font-size:0.85rem;color:var(--text);font-weight:600;margin-bottom:4px;">ApprovalQueue (Redis)</div>
+            <div style="font-size:0.78rem;color:var(--muted);">pending human decisions · TTL 4h → auto-escalate</div>
+          </div>
+        </div>
+        <div style="margin-top:14px;padding:12px 16px;background:#7c6af711;border:1px solid #7c6af744;border-radius:8px;font-size:0.82rem;color:var(--muted);">
+          Agent loop capped at <strong style="color:var(--accent);">12 turns</strong> per ticket before auto-escalation.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── SLIDE 5: Guardrails ── -->
+  <div class="slide">
+    <div class="tag guard">Guardrails</div>
+    <h2>Three-Layer Safety Model</h2>
+    <div class="guard-grid">
+      <div class="guard-card">
+        <h3>Input Guardrails (pre-agent)</h3>
+        <ul>
+          <li>PII scan — redact SSNs, credit card numbers before model call</li>
+          <li>Prompt injection detector — regex + heuristic scan; quarantine on match</li>
+          <li>Size limit — truncate ticket body at 8,000 tokens</li>
+          <li>Encoding normalization — strip HTML, decode MIME, transliterate non-UTF-8</li>
+        </ul>
+      </div>
+      <div class="guard-card">
+        <h3>Agent Guardrails (in-loop)</h3>
+        <ul>
+          <li><code>can_use_tool</code> permission hooks — enforce confidence thresholds and category hard-stops</li>
+          <li>Max turns — cap at 12 turns; auto-escalate if unresolved</li>
+          <li>Scope enforcement — system prompt explicitly enumerates allowed/disallowed actions</li>
+        </ul>
+      </div>
+      <div class="guard-card">
+        <h3>Output Guardrails (post-agent)</h3>
+        <ul>
+          <li>Decision validator — structured output parsed and validated against schema before write</li>
+          <li>Hard-stop checker — final decision checked against hard-stop list before any write action</li>
+          <li>Audit write — all decisions written to append-only log regardless of outcome</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── SLIDE 6: Alternatives ── -->
+  <div class="slide">
+    <div class="tag trade">Alternatives Considered</div>
+    <h2>Four Paths Rejected</h2>
+    <div class="alts">
+      <div class="alt-card">
+        <div class="alt-label">Alt A — Rejected</div>
+        <div class="alt-name">Pure Classifier (no agent loop)</div>
+        <div class="alt-reason">Can't enrich with live context (CMDB, HRIS, status page), can't take write actions, can't reason about edge cases. High maintenance overhead for retraining.</div>
+      </div>
+      <div class="alt-card">
+        <div class="alt-label">Alt B — Rejected</div>
+        <div class="alt-name">Full LLM, no SDK, direct API</div>
+        <div class="alt-reason">Reinvents tool orchestration, context management, and permission hooks. The Agent SDK provides these primitives production-tested.</div>
+      </div>
+      <div class="alt-card">
+        <div class="alt-label">Alt C — Rejected</div>
+        <div class="alt-name">Multi-agent mesh (agent per channel)</div>
+        <div class="alt-reason">State fragmentation, routing inconsistency, harder to audit. Single triage agent with normalized input is simpler and more auditable.</div>
+      </div>
+      <div class="alt-card">
+        <div class="alt-label">Alt D — Rejected</div>
+        <div class="alt-name">Human-in-the-loop for every ticket</div>
+        <div class="alt-reason">Doesn't solve the throughput problem. Legal is fine with autonomous action within the defined mandate.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── SLIDE 7: Tradeoffs ── -->
+  <div class="slide">
+    <div class="tag trade">Consequences</div>
+    <h2>Tradeoffs</h2>
+    <div class="tradeoffs">
+      <div class="pro-card">
+        <h3>Benefits</h3>
+        <ul style="margin-top:14px;">
+          <li>Fast path for 61% of ticket volume — password resets, FAQ, duplicate detection</li>
+          <li>Full reasoning trace per decision — explainable to any auditor</li>
+          <li>Permission hooks enforce mandate boundaries at the code level, not just in prompts</li>
+          <li>Subagent pattern keeps security logic isolated and auditable separately</li>
+        </ul>
+      </div>
+      <div class="con-card">
+        <h3>Risks to Watch</h3>
+        <ul style="margin-top:14px;">
+          <li>Agent SDK is relatively new — API surface may evolve</li>
+          <li>Security subagent adds ~2–4s latency on security-flagged tickets</li>
+          <li>Confidence calibration requires ongoing tuning — higher escalation rate in cold-start</li>
+          <li>System prompt length grows as mandate expands — monitor context usage</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── SLIDE 8: Open Questions ── -->
+  <div class="slide">
+    <div class="tag adr">Open Questions</div>
+    <h2>Three Items for Resolution</h2>
+    <div class="questions">
+      <div class="question">
+        <span>Email actions</span> — Do we allow the agent to send emails directly, or only write to the ticketing system?
+        <br/><span style="color:var(--green);font-size:0.82rem;">Current stance: ticketing system only — safer.</span>
+      </div>
+      <div class="question">
+        <span>Approval queue SLA</span> — What is the SLA for human approvals in the queue?
+        <br/><span style="color:var(--yellow);font-size:0.82rem;">Proposed: 30 min for P1 · 4 hrs for P2</span>
+      </div>
+      <div class="question">
+        <span>Multi-language tickets</span> — How do we handle tickets arriving in languages other than English?
+        <br/><span style="color:var(--muted);font-size:0.82rem;">MVP: English only · v2: translate-then-process</span>
+      </div>
+    </div>
+    <div style="margin-top:24px;padding:16px 20px;background:var(--surface);border:1px solid var(--border);border-radius:10px;display:flex;gap:24px;flex-wrap:wrap;">
+      <div class="meta-item"><strong>Status:</strong> Accepted</div>
+      <div class="meta-item"><strong>Date:</strong> 2026-03-23</div>
+      <div class="meta-item"><strong>Team:</strong> Team 24 — TicketPilot</div>
+      <div class="meta-item"><strong>Model:</strong> claude-sonnet-4-6</div>
+    </div>
+  </div>
+
+</div><!-- /slides -->
+
+<!-- ── Navigation ── -->
+<div id="nav">
+  <button class="nav-btn" id="prev-btn" onclick="go(-1)" disabled>← Prev</button>
+  <div id="dots"></div>
+  <div id="nav-info">Slide <span id="cur">1</span> / <span id="total">8</span></div>
+  <button class="nav-btn" id="next-btn" onclick="go(1)">Next →</button>
+</div>
+
+<script>
+  const slides = document.querySelectorAll('.slide');
+  const dotsEl = document.getElementById('dots');
+  let current = 0;
+
+  // build dots
+  slides.forEach((_, i) => {
+    const d = document.createElement('div');
+    d.className = 'dot' + (i === 0 ? ' active' : '');
+    d.onclick = () => goTo(i);
+    dotsEl.appendChild(d);
+  });
+
+  function goTo(n) {
+    slides[current].classList.remove('active');
+    slides[current].classList.add('exit');
+    setTimeout(() => slides[current - (current === n ? 0 : (n > current ? -1 : 1))].classList.remove('exit'), 400);
+
+    // clean up exit class on old slide after transition
+    const old = current;
+    setTimeout(() => slides[old].classList.remove('exit'), 420);
+
+    current = n;
+    slides[current].classList.add('active');
+
+    document.querySelectorAll('.dot').forEach((d, i) => d.classList.toggle('active', i === current));
+    document.getElementById('cur').textContent = current + 1;
+    document.getElementById('prev-btn').disabled = current === 0;
+    document.getElementById('next-btn').disabled = current === slides.length - 1;
+  }
+
+  function go(dir) { goTo(Math.max(0, Math.min(slides.length - 1, current + dir))); }
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') go(1);
+    if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')   go(-1);
+  });
+
+  document.getElementById('total').textContent = slides.length;
+</script>
+</body>
+</html>
